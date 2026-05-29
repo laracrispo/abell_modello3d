@@ -1,0 +1,168 @@
+
+<style>
+* { box-sizing: border-box; }
+canvas { display: block; width: 100%; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); cursor: grab; }
+canvas:active { cursor: grabbing; }
+.controls { display: flex; align-items: center; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
+.ctrl-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text-secondary); }
+.ctrl-item input[type=range] { width: 90px; }
+</style>
+
+<div style="padding: 1rem 0 0;">
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl-item"><i class="ti ti-rotate" aria-hidden="true" style="font-size:14px"></i><input type="range" id="sl-rot" min="0" max="360" value="22" step="1"></div>
+  <div class="ctrl-item"><i class="ti ti-angle" aria-hidden="true" style="font-size:14px"></i><input type="range" id="sl-tilt" min="15" max="60" value="34" step="1"></div>
+  <div class="ctrl-item" style="margin-left:auto;"><button onclick="resetView()" style="font-size:12px;padding:4px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-primary);cursor:pointer;">Reset vista</button></div>
+</div>
+
+</div>
+<div style="display:flex;gap:20px;margin-top:10px;flex-wrap:wrap;">
+  <div style="display:flex;align-items:center;gap:7px;font-size:12px;">
+    <div style="width:14px;height:14px;border-radius:3px;background:#9FE1CB;border:1px solid #1D9E75;flex-shrink:0;"></div>
+    <span style="color:var(--color-text-secondary)">Innovative Medicine</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:7px;font-size:12px;">
+    <div style="width:14px;height:14px;border-radius:3px;background:#B5D4F4;border:1px solid #378ADD;flex-shrink:0;"></div>
+    <span style="color:var(--color-text-secondary)">MedTech</span>
+  </div>
+</div>
+
+<script>
+const WHO  = ['Pazienti','Ospedali','Farmacie e grossisti','Specialisti','Chirurghi','Oculisti'];
+const WHAT = ['Cura malattie rare','Patologie croniche','Precisione','Recupero funzionale','Cura della vista'];
+const HOW  = ['Ricerca e Sviluppo','Produzione farmaco','Robotica','Ingegneria biomedica','Innovazione digitale'];
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = 640, H = 560;
+cv.width = W; cv.height = H;
+
+let rotAngle = 22, tiltAngle = 34;
+let dragging = false, lastX = 0;
+
+function iso(x, y, z) {
+  const rad = rotAngle * Math.PI / 180;
+  const tilt = tiltAngle * Math.PI / 180;
+  const rx = x * Math.cos(rad) - y * Math.sin(rad);
+  const ry = x * Math.sin(rad) + y * Math.cos(rad);
+  return [W/2 + rx, H/2 + 100 + ry * Math.sin(tilt) - z * Math.cos(tilt)];
+}
+
+function drawSolid(x0, y0, z0, x1, y1, z1, pal) {
+  const p = (x,y,z) => iso(x,y,z);
+  const p000=p(x0,y0,z0), p100=p(x1,y0,z0), p110=p(x1,y1,z0), p010=p(x0,y1,z0);
+  const p001=p(x0,y0,z1), p101=p(x1,y0,z1), p111=p(x1,y1,z1), p011=p(x0,y1,z1);
+
+  const rad = rotAngle * Math.PI / 180;
+  const showFront = Math.cos(rad) >= 0;
+  const showRight = Math.sin(rad) >= 0;
+
+  const faces = [
+    { pts: [p001,p101,p111,p011], fill: pal.top,   stroke: pal.stroke },
+    { pts: showFront ? [p010,p110,p111,p011] : [p000,p100,p101,p001], fill: pal.side1, stroke: pal.stroke },
+    { pts: showRight ? [p100,p110,p111,p101] : [p000,p010,p011,p001], fill: pal.side2, stroke: pal.stroke },
+  ];
+
+  faces.forEach(f => {
+    ctx.beginPath();
+    ctx.moveTo(f.pts[0][0], f.pts[0][1]);
+    f.pts.slice(1).forEach(pt => ctx.lineTo(pt[0], pt[1]));
+    ctx.closePath();
+    ctx.fillStyle = f.fill; ctx.fill();
+    ctx.strokeStyle = f.stroke; ctx.lineWidth = 1.2; ctx.stroke();
+  });
+}
+
+function drawArrow(x0,y0,z0,x1,y1,z1,color) {
+  const [ax,ay]=iso(x0,y0,z0),[bx,by]=iso(x1,y1,z1);
+  ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);
+  ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.stroke();
+  const ang=Math.atan2(by-ay,bx-ax);
+  ctx.beginPath();ctx.moveTo(bx,by);
+  ctx.lineTo(bx-9*Math.cos(ang-0.35),by-9*Math.sin(ang-0.35));
+  ctx.lineTo(bx-9*Math.cos(ang+0.35),by-9*Math.sin(ang+0.35));
+  ctx.closePath();ctx.fillStyle=color;ctx.fill();
+}
+
+function tickLabel(x,y,z,text,color,align) {
+  const [px,py]=iso(x,y,z);
+  ctx.font='10px var(--font-sans,sans-serif)';
+  ctx.textAlign=align||'center'; ctx.textBaseline='middle';
+  ctx.fillStyle=color; ctx.fillText(text,px,py);
+}
+
+function axisLabel(x,y,z,text,color) {
+  const [px,py]=iso(x,y,z);
+  ctx.font='500 13px var(--font-sans,sans-serif)';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle=color; ctx.fillText(text,px,py);
+}
+
+function draw() {
+  ctx.clearRect(0,0,W,H);
+
+  const cW=54, cD=54, cH=40;
+  const nW=WHO.length, nWt=WHAT.length, nH=HOW.length;
+  const totX=nW*cW, totY=nWt*cD, totZ=nH*cH;
+  const ox=-totX/2, oy=-totY/2, oz=-totZ/2;
+  const rad = rotAngle * Math.PI / 180;
+
+  const palViola = { top:'#E1F5EE', side1:'#9FE1CB', side2:'#5DCAA5', stroke:'#1D9E75' };
+  const palCorallo = { top:'#E6F1FB', side1:'#B5D4F4', side2:'#85B7EB', stroke:'#378ADD' };
+
+  // viola: WHO 0-2, WHAT 0-1, HOW 0-1
+  const vx0=ox+0*cW, vx1=ox+3*cW;
+  const vy0=oy+0*cD, vy1=oy+2*cD;
+  const vz0=oz+0*cH, vz1=oz+2*cH;
+
+  // corallo: WHO 3-5, WHAT 2-4, HOW 2-4
+  const cx0=ox+3*cW, cx1=ox+6*cW;
+  const cy0=oy+2*cD, cy1=oy+5*cD;
+  const cz0=oz+2*cH, cz1=oz+5*cH;
+
+  // draw back-most first based on rotation
+  const violaDepth  = (vx0+vx1)/2 * Math.cos(rad * Math.PI/180 * 0 + 0) + (vy0+vy1)/2;
+  const coralloDepth= (cx0+cx1)/2 * Math.cos(0) + (cy0+cy1)/2;
+
+  const order = (vy0+vy1) < (cy0+cy1) ? ['viola','corallo'] : ['corallo','viola'];
+
+  order.forEach(name => {
+    if (name === 'viola') drawSolid(vx0,vy0,vz0, vx1,vy1,vz1, palViola);
+    else drawSolid(cx0,cy0,cz0, cx1,cy1,cz1, palCorallo);
+  });
+
+  const ext=30, off=20;
+  drawArrow(ox,oy,oz+totZ, ox+totX+ext,oy,oz+totZ,'#185FA5');
+  drawArrow(ox,oy+totY,oz+totZ, ox,oy-ext,oz+totZ,'#0F6E56');
+  drawArrow(ox,oy,oz, ox,oy,oz+totZ+ext,'#854F0B');
+  axisLabel(ox+totX+ext+22,oy,oz+totZ,'WHO','#185FA5');
+  axisLabel(ox,oy-ext-16,oz+totZ,'WHAT','#0F6E56');
+  axisLabel(ox,oy,oz+totZ+ext+18,'HOW','#854F0B');
+
+  for (let ix=0; ix<nW; ix++) {
+    tickLabel(ox+ix*cW+cW/2, oy-off, oz+totZ, WHO[ix], '#0C447C', 'center');
+  }
+  for (let iy=0; iy<nWt; iy++) {
+    const side = Math.cos(rad)>=0 ? -1 : 1;
+    tickLabel(ox+(side<0?-off:totX+off), oy+iy*cD+cD/2, oz+totZ, WHAT[iy], '#085041', side<0?'right':'left');
+  }
+  for (let iz=0; iz<nH; iz++) {
+    const side = Math.sin(rad)>=0 ? 1 : -1;
+    tickLabel(ox+(side>0?totX+off:-off), oy-off, oz+iz*cH+cH/2, HOW[iz], '#633806', side>0?'left':'right');
+  }
+}
+
+document.getElementById('sl-rot').addEventListener('input',e=>{rotAngle=+e.target.value;draw();});
+document.getElementById('sl-tilt').addEventListener('input',e=>{tiltAngle=+e.target.value;draw();});
+cv.addEventListener('mousedown',e=>{dragging=true;lastX=e.clientX;});
+cv.addEventListener('mousemove',e=>{if(!dragging)return;rotAngle=(rotAngle+(e.clientX-lastX)*0.5+360)%360;lastX=e.clientX;document.getElementById('sl-rot').value=Math.round(rotAngle);draw();});
+cv.addEventListener('mouseup',()=>dragging=false);
+cv.addEventListener('mouseleave',()=>dragging=false);
+cv.addEventListener('touchstart',e=>{dragging=true;lastX=e.touches[0].clientX;},{passive:true});
+cv.addEventListener('touchmove',e=>{if(!dragging)return;rotAngle=(rotAngle+(e.touches[0].clientX-lastX)*0.5+360)%360;lastX=e.touches[0].clientX;document.getElementById('sl-rot').value=Math.round(rotAngle);draw();},{passive:true});
+cv.addEventListener('touchend',()=>dragging=false);
+function resetView(){rotAngle=22;tiltAngle=34;document.getElementById('sl-rot').value=22;document.getElementById('sl-tilt').value=34;draw();}
+
+draw();
+</script>
